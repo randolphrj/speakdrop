@@ -1397,6 +1397,12 @@ fn main() {
                 });
             }
 
+            // The floating pill starts click-through and invisible; its page
+            // fades it in during dictation (see src/pill/Pill.tsx).
+            if let Some(pill) = app.get_webview_window("pill") {
+                let _ = pill.set_ignore_cursor_events(true);
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

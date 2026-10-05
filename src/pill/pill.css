@@ -1,0 +1,56 @@
+/* The pill window is transparent; only the capsule is painted. */
+html,
+body,
+#root {
+  background: transparent;
+  height: 100%;
+  overflow: hidden;
+}
+
+.pill {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-4) 0 var(--space-5, 20px);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-secondary) 94%, transparent);
+  border: 1px solid var(--border-card);
+  color: var(--text-primary);
+  cursor: grab;
+  user-select: none;
+  opacity: 0;
+  transform: scale(0.96);
+  transition:
+    opacity 160ms ease-out,
+    transform 160ms ease-out;
+}
+
+.pill.visible {
+  opacity: 1;
+  transform: none;
+}
+
+.pill:active {
+  cursor: grabbing;
+}
+
+.pill .voice-wave {
+  flex: none;
+  height: 28px;
+}
+
+.pill-caption {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.pill-caption.placeholder {
+  color: var(--text-tertiary);
+}

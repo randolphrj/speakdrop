@@ -18,6 +18,7 @@ export default defineConfig({
       input: {
         main: path.resolve(__dirname, "index.html"),
         screenshots: path.resolve(__dirname, "screenshots.html"),
+        pill: path.resolve(__dirname, "pill.html"),
       },
     },
   },

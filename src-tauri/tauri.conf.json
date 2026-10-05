@@ -19,6 +19,25 @@
         "resizable": false,
         "fullscreen": false,
         "visible": true
+      },
+      {
+        "label": "pill",
+        "title": "GladiaFlow Pill",
+        "url": "pill.html",
+        "width": 240,
+        "height": 56,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "visibleOnAllWorkspaces": true,
+        "skipTaskbar": true,
+        "focus": false,
+        "focusable": false,
+        "visible": true
       }
     ]
   },

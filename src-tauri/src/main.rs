@@ -20,6 +20,7 @@ mod hotkey_layout;
 mod legacy_migration;
 mod permissions;
 mod region;
+mod single_instance;
 mod utterance_cleaner;
 mod vocabulary;
 
@@ -1261,7 +1262,16 @@ fn main() {
     // Carry data over from the former GladiaFlow names before any WebView or
     // config access. Outcomes are logged once the log plugin is running.
     let context = tauri::generate_context!();
-    let migration_outcomes = legacy_migration::run(&context.config().identifier);
+    let identifier = context.config().identifier.clone();
+
+    // One copy only: a second launch brings the running copy's window forward
+    // and exits, instead of fighting it for the hotkey and microphone.
+    let instance_listener = match single_instance::acquire(&identifier) {
+        single_instance::Acquire::AlreadyRunning => std::process::exit(0),
+        single_instance::Acquire::Primary(listener) => listener,
+    };
+
+    let migration_outcomes = legacy_migration::run(&identifier);
 
     tauri::Builder::default()
         .plugin(
@@ -1281,6 +1291,18 @@ fn main() {
         .setup(move |app| {
             for outcome in &migration_outcomes {
                 log::info!("[migration] {outcome}");
+            }
+            match instance_listener {
+                Some(listener) => {
+                    let handle = app.handle().clone();
+                    single_instance::listen(listener, &identifier, move || {
+                        log::info!("[single-instance] another launch asked to show the window");
+                        show_main_window(&handle);
+                    });
+                }
+                None => log::warn!(
+                    "[single-instance] instance port unavailable; duplicate launches are not prevented"
+                ),
             }
             app.manage(AppState {
                 gladia: Arc::new(TokioMutex::new(GladiaClient::new())),

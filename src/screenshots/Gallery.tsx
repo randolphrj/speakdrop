@@ -159,6 +159,7 @@ export function ScreenshotGallery() {
         <AppShell id="03-home-idle">
           <HomeView
             isRecording={false}
+            audioLevel={0}
             isProcessing={false}
             homeTitle="Ready to dictate"
             homeSubtitle="Hold Fn, speak, release."
@@ -186,6 +187,7 @@ export function ScreenshotGallery() {
         <AppShell id="04-home-recording">
           <HomeView
             isRecording
+            audioLevel={0.6}
             isProcessing={false}
             homeTitle="Listening..."
             homeSubtitle={null}
@@ -213,6 +215,7 @@ export function ScreenshotGallery() {
         <AppShell id="04b-home-api-open">
           <HomeView
             isRecording={false}
+            audioLevel={0}
             isProcessing={false}
             homeTitle="Ready to dictate"
             homeSubtitle="Hold Fn, speak, release."

@@ -5,6 +5,7 @@ import { FinalizingSpinner } from "./FinalizingSpinner";
 
 export function HomeView({
   isRecording,
+  audioLevel,
   isProcessing,
   homeTitle,
   homeSubtitle,
@@ -26,6 +27,7 @@ export function HomeView({
   onDismissError,
 }: {
   isRecording: boolean;
+  audioLevel: number;
   isProcessing: boolean;
   homeTitle: string;
   homeSubtitle: string | null;
@@ -53,7 +55,10 @@ export function HomeView({
           className={`ready-icon ${isRecording ? "recording" : ""} ${isProcessing ? "processing" : ""}`}
         >
           {isRecording ? (
-            <VoiceWaveIndicator isListening={isRecording} />
+            <VoiceWaveIndicator
+              isListening={isRecording}
+              level={audioLevel}
+            />
           ) : (
             <FinalizingSpinner />
           )}

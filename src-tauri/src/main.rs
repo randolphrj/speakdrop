@@ -101,6 +101,62 @@ impl FirstAudioChunkGate {
     }
 }
 
+// Level-meter range for the UI voice indicator. The software pre-amp in
+// audio.rs adds at most +1.9 dB and only above ~-36 dBFS, so the quiet-room
+// floor is unaffected and speech (pre-amp target ~-18 dBFS) lands near 0.8.
+const AUDIO_LEVEL_FLOOR_DBFS: f32 = -50.0;
+const AUDIO_LEVEL_CEILING_DBFS: f32 = -10.0;
+// ~30 "audio-level" events per second.
+const AUDIO_LEVEL_EMIT_INTERVAL: Duration = Duration::from_millis(33);
+
+/// RMS loudness of 16-bit little-endian mono PCM, in dBFS.
+/// Returns negative infinity for empty or fully silent input.
+fn pcm16_rms_dbfs(data: &[u8]) -> f32 {
+    let mut sum_squares = 0.0f64;
+    let mut count = 0usize;
+    for pair in data.chunks_exact(2) {
+        let sample = i16::from_le_bytes([pair[0], pair[1]]) as f64 / i16::MAX as f64;
+        sum_squares += sample * sample;
+        count += 1;
+    }
+    if count == 0 || sum_squares == 0.0 {
+        return f32::NEG_INFINITY;
+    }
+    let rms = (sum_squares / count as f64).sqrt();
+    (20.0 * rms.log10()) as f32
+}
+
+/// Map dBFS onto 0.0..=1.0 for the voice indicator, clamped.
+fn dbfs_to_level(dbfs: f32) -> f32 {
+    if !dbfs.is_finite() {
+        return 0.0;
+    }
+    ((dbfs - AUDIO_LEVEL_FLOOR_DBFS) / (AUDIO_LEVEL_CEILING_DBFS - AUDIO_LEVEL_FLOOR_DBFS))
+        .clamp(0.0, 1.0)
+}
+
+/// Throttles level events, reporting the loudest chunk seen in each window so
+/// short syllables between emits are not dropped.
+#[derive(Default)]
+struct AudioLevelThrottle {
+    last_emit: Option<Instant>,
+    peak: f32,
+}
+
+impl AudioLevelThrottle {
+    fn observe(&mut self, level: f32, now: Instant) -> Option<f32> {
+        self.peak = self.peak.max(level);
+        let due = self
+            .last_emit
+            .is_none_or(|last| now.duration_since(last) >= AUDIO_LEVEL_EMIT_INTERVAL);
+        if !due {
+            return None;
+        }
+        self.last_emit = Some(now);
+        Some(std::mem::take(&mut self.peak))
+    }
+}
+
 fn tray_icon_from_bytes(bytes: &[u8]) -> Result<tauri::image::Image<'static>, String> {
     tauri::image::Image::from_bytes(bytes).map_err(|e| e.to_string())
 }
@@ -642,6 +698,7 @@ async fn start_audio_capture(
     let capture_started = Instant::now();
     tokio::task::spawn_blocking(move || {
         let mut readiness = FirstAudioChunkGate::default();
+        let mut level_throttle = AudioLevelThrottle::default();
         while let Ok(chunk) = rx.recv() {
             if readiness.observe() {
                 let _ = ready_app.emit(
@@ -652,6 +709,11 @@ async fn start_audio_capture(
                         "wakeLatencyMs": capture_started.elapsed().as_millis(),
                     }),
                 );
+            }
+            // Read-only metering for the UI; chunk.data is forwarded unchanged.
+            let level = dbfs_to_level(pcm16_rms_dbfs(&chunk.data));
+            if let Some(level) = level_throttle.observe(level, Instant::now()) {
+                let _ = ready_app.emit("audio-level", level);
             }
             if tx.send(chunk.data).is_err() {
                 break;
@@ -698,6 +760,62 @@ mod readiness_tests {
         assert!(gate.observe());
         assert!(!gate.observe());
         assert!(!gate.observe());
+    }
+}
+
+#[cfg(test)]
+mod audio_level_tests {
+    use super::{dbfs_to_level, pcm16_rms_dbfs, AudioLevelThrottle};
+    use std::time::{Duration, Instant};
+
+    fn pcm(samples: &[i16]) -> Vec<u8> {
+        samples.iter().flat_map(|s| s.to_le_bytes()).collect()
+    }
+
+    #[test]
+    fn silence_and_empty_input_map_to_zero() {
+        assert_eq!(pcm16_rms_dbfs(&[]), f32::NEG_INFINITY);
+        assert_eq!(pcm16_rms_dbfs(&pcm(&[0; 160])), f32::NEG_INFINITY);
+        assert_eq!(dbfs_to_level(pcm16_rms_dbfs(&pcm(&[0; 160]))), 0.0);
+    }
+
+    #[test]
+    fn full_scale_square_wave_is_zero_dbfs() {
+        let data = pcm(&[i16::MAX, -i16::MAX].repeat(80));
+        assert!(pcm16_rms_dbfs(&data).abs() < 0.01);
+    }
+
+    #[test]
+    fn half_scale_is_about_minus_six_dbfs() {
+        let data = pcm(&[16384, -16384].repeat(80));
+        assert!((pcm16_rms_dbfs(&data) + 6.02).abs() < 0.05);
+    }
+
+    #[test]
+    fn level_mapping_is_linear_and_clamped() {
+        assert_eq!(dbfs_to_level(-80.0), 0.0);
+        assert_eq!(dbfs_to_level(-50.0), 0.0);
+        assert!((dbfs_to_level(-30.0) - 0.5).abs() < 1e-6);
+        assert_eq!(dbfs_to_level(-10.0), 1.0);
+        assert_eq!(dbfs_to_level(0.0), 1.0);
+        assert_eq!(dbfs_to_level(f32::NAN), 0.0);
+    }
+
+    #[test]
+    fn throttle_emits_window_peak_at_most_every_interval() {
+        let start = Instant::now();
+        let mut throttle = AudioLevelThrottle::default();
+        assert_eq!(throttle.observe(0.2, start), Some(0.2));
+        assert_eq!(throttle.observe(0.9, start + Duration::from_millis(10)), None);
+        assert_eq!(throttle.observe(0.3, start + Duration::from_millis(20)), None);
+        assert_eq!(
+            throttle.observe(0.1, start + Duration::from_millis(33)),
+            Some(0.9)
+        );
+        assert_eq!(
+            throttle.observe(0.4, start + Duration::from_millis(66)),
+            Some(0.4)
+        );
     }
 }
 

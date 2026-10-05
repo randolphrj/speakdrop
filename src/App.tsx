@@ -142,6 +142,7 @@ export default function App() {
   const [configResetError, setConfigResetError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<string>("");
   const [isRecording, setIsRecording] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [navScreen, setNavScreen] = useState<NavScreen>("home");
   const [settings, setSettings] = useState<AppSettings>({
@@ -336,6 +337,7 @@ export default function App() {
   const setRecordingState = (recording: boolean) => {
     isRecordingRef.current = recording;
     setIsRecording(recording);
+    if (!recording) setAudioLevel(0);
   };
 
   const flushPendingStartRef = useRef<() => void>(() => {});
@@ -633,6 +635,15 @@ export default function App() {
         audioCue.playStartSound();
       });
 
+      const unlistenAudioLevel = await listen<number>(
+        "audio-level",
+        (event) => {
+          // Drain-time chunks can arrive after stop; keep the meter at rest.
+          if (!isRecordingRef.current) return;
+          setAudioLevel(event.payload);
+        },
+      );
+
       const unlistenPartial = await listen<string>(
         "transcription-partial",
         (event) => {
@@ -817,6 +828,7 @@ export default function App() {
         unlistenHotkeyPressed();
         unlistenHotkeyReleased();
         unlistenAudioReady();
+        unlistenAudioLevel();
         unlistenPartial();
         unlistenFinal();
         unlistenSessionEnded();
@@ -829,6 +841,7 @@ export default function App() {
         unlistenHotkeyPressed,
         unlistenHotkeyReleased,
         unlistenAudioReady,
+        unlistenAudioLevel,
         unlistenPartial,
         unlistenFinal,
         unlistenSessionEnded,
@@ -1895,6 +1908,7 @@ export default function App() {
           {activeScreen === "home" && (
             <HomeView
               isRecording={isRecording}
+              audioLevel={audioLevel}
               isProcessing={isProcessing}
               homeTitle={homeTitle}
               homeSubtitle={homeSubtitle}

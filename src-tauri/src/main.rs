@@ -17,6 +17,7 @@ mod gladia;
 mod history;
 mod hotkey;
 mod hotkey_layout;
+mod legacy_migration;
 mod permissions;
 mod region;
 mod utterance_cleaner;
@@ -185,7 +186,7 @@ async fn apply_tray_activity(
         "recording" => {
             let icon = tray_icon_from_bytes(TRAY_ICON_DICTATING)?;
             tray.set_icon(Some(icon)).map_err(|e| e.to_string())?;
-            tray.set_tooltip(Some("GladiaFlow — Dictating…"))
+            tray.set_tooltip(Some("SpeakDrop — Dictating…"))
                 .map_err(|e| e.to_string())?;
         }
         "starting" | "finalizing" => {
@@ -199,9 +200,9 @@ async fn apply_tray_activity(
                         if let Ok(tray) = tray_handle(&app_handle) {
                             let _ = tray.set_icon(Some(icon));
                             let tooltip = if starting {
-                                "GladiaFlow — Starting microphone…"
+                                "SpeakDrop — Starting microphone…"
                             } else {
-                                "GladiaFlow — Finalizing…"
+                                "SpeakDrop — Finalizing…"
                             };
                             let _ = tray.set_tooltip(Some(tooltip));
                         }
@@ -215,7 +216,7 @@ async fn apply_tray_activity(
         _ => {
             let icon = tray_icon_from_bytes(TRAY_ICON_IDLE)?;
             tray.set_icon(Some(icon)).map_err(|e| e.to_string())?;
-            tray.set_tooltip(Some("GladiaFlow"))
+            tray.set_tooltip(Some("SpeakDrop"))
                 .map_err(|e| e.to_string())?;
         }
     }
@@ -354,7 +355,7 @@ mod external_url_tests {
             "https://gladia.io/",
             "https://app.gladia.io/apikeys",
             "https://docs.gladia.io/chapters/audio-intelligence/custom-vocabulary",
-            "https://app.gladia.io/transcriptions/live/session-id?source=gladiaflow",
+            "https://app.gladia.io/transcriptions/live/session-id?source=speakdrop",
             "https://nested.internal.gladia.io/path",
         ] {
             assert!(validate_external_url(url).is_ok(), "should allow {url}");
@@ -987,7 +988,7 @@ fn get_region(state: State<'_, AppState>) -> String {
 }
 
 /// Reveal the folder containing the rolling log file (e.g.
-/// `~/Library/Logs/io.gladia.gladiaflow/` on macOS) so the user can attach or share it.
+/// `~/Library/Logs/io.github.randolphrj.speakdrop/` on macOS) so the user can attach or share it.
 #[tauri::command]
 fn open_log_folder(app: tauri::AppHandle) -> Result<(), String> {
     let dir = app
@@ -999,14 +1000,14 @@ fn open_log_folder(app: tauri::AppHandle) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        // The log directory (~/Library/Logs/io.gladia.gladiaflow) can be
+        // The log directory (~/Library/Logs/io.github.randolphrj.speakdrop) can be
         // interpreted by macOS LaunchServices as an application bundle, so
         // `open <dir>` may try to *launch* it and fail ("the application cannot
         // be opened because its executable is missing"). Reveal the log file in
         // Finder with `open -R` instead, which sidesteps the package
         // interpretation and hands the user the exact file they need to share.
         // Falls back to revealing the directory itself if no log file exists yet.
-        let log_file = dir.join("gladiaflow.log");
+        let log_file = dir.join("speakdrop.log");
         let target: &std::path::Path = if log_file.exists() { &log_file } else { &dir };
         std::process::Command::new("open")
             .arg("-R")
@@ -1257,12 +1258,17 @@ fn main() {
         std::process::exit(0);
     }
 
+    // Carry data over from the former GladiaFlow names before any WebView or
+    // config access. Outcomes are logged once the log plugin is running.
+    let context = tauri::generate_context!();
+    let migration_outcomes = legacy_migration::run(&context.config().identifier);
+
     tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
-                        file_name: Some("gladiaflow".into()),
+                        file_name: Some("speakdrop".into()),
                     }),
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
                 ])
@@ -1272,7 +1278,10 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
-        .setup(|app| {
+        .setup(move |app| {
+            for outcome in &migration_outcomes {
+                log::info!("[migration] {outcome}");
+            }
             app.manage(AppState {
                 gladia: Arc::new(TokioMutex::new(GladiaClient::new())),
                 audio: Arc::new(AudioCapture::new()),
@@ -1353,7 +1362,7 @@ fn main() {
             let idle_icon = tray_icon_from_bytes(TRAY_ICON_IDLE)?;
             let _tray = TrayIconBuilder::with_id(TRAY_ID)
                 .icon(idle_icon)
-                .tooltip("GladiaFlow")
+                .tooltip("SpeakDrop")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -1459,6 +1468,6 @@ fn main() {
             request_microphone_permission,
             set_tray_activity,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }

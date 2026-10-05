@@ -1,5 +1,5 @@
 // Local transcription history persisted in SQLite alongside config.json
-// ({config_dir}/gladiaflow/history.db). Survives app upgrades and WebView cache clears.
+// ({config_dir}/speakdrop/history.db). Survives app upgrades and WebView cache clears.
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Matcher, Utf32Str};
 use rusqlite::{params, Connection};

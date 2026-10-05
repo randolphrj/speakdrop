@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/schema.json",
-  "productName": "GladiaFlow",
+  "productName": "SpeakDrop",
   "version": "0.1.0",
-  "identifier": "io.gladia.gladiaflow",
+  "identifier": "io.github.randolphrj.speakdrop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "GladiaFlow",
+        "title": "SpeakDrop",
         "width": 800,
         "height": 600,
         "resizable": false,
@@ -22,7 +22,7 @@
       },
       {
         "label": "pill",
-        "title": "GladiaFlow Pill",
+        "title": "SpeakDrop Pill",
         "url": "pill.html",
         "width": 240,
         "height": 56,

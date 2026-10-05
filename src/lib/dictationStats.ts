@@ -28,8 +28,11 @@ export const DEFAULT_DICTATION_STATS: DictationStats = {
   days: {},
 };
 
+export const DICTATION_STATS_STORAGE_KEY = "speakdrop.dictation.stats.v2";
+// Keys from before the SpeakDrop rename, read only to carry data over.
+export const LEGACY_DICTATION_STATS_V2_STORAGE_KEY =
+  "gladiaflow.dictation.stats.v2";
 export const DICTATION_STATS_V1_STORAGE_KEY = "gladiaflow.dictation.stats.v1";
-export const DICTATION_STATS_STORAGE_KEY = "gladiaflow.dictation.stats.v2";
 
 /** Dictations shorter than this are left out of speed numbers. */
 export const MIN_SECONDS_FOR_SPEED = 2;

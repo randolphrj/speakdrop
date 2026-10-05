@@ -15,7 +15,9 @@ import {
   type Rect,
 } from "../lib/pillPosition";
 
-const POSITION_KEY = "gladiaflow.pill.position";
+const POSITION_KEY = "speakdrop.pill.position";
+// Read once to carry the position over from before the SpeakDrop rename.
+const LEGACY_POSITION_KEY = "gladiaflow.pill.position";
 const HIDE_AFTER_PASTE_MS = 300;
 // Safety net: audio-level arrives ~30x/s while capturing, so a long silence
 // in events means the session ended without a paste-complete.
@@ -26,7 +28,9 @@ const CAPTION_MAX_CHARS = 28;
 
 const readSavedPosition = (): Point | null => {
   try {
-    const raw = localStorage.getItem(POSITION_KEY);
+    const raw =
+      localStorage.getItem(POSITION_KEY) ??
+      localStorage.getItem(LEGACY_POSITION_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return Number.isFinite(parsed?.x) && Number.isFinite(parsed?.y)

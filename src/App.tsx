@@ -36,6 +36,7 @@ import {
   DEFAULT_DICTATION_STATS,
   DICTATION_STATS_STORAGE_KEY,
   DICTATION_STATS_V1_STORAGE_KEY,
+  LEGACY_DICTATION_STATS_V2_STORAGE_KEY,
   getDictationComment,
   parseStoredDictationStats,
   recordDictation,
@@ -131,7 +132,8 @@ function resolveScreen(
 function loadDictationStats(): DictationStats {
   try {
     const { stats, migrated } = parseStoredDictationStats(
-      localStorage.getItem(DICTATION_STATS_STORAGE_KEY),
+      localStorage.getItem(DICTATION_STATS_STORAGE_KEY) ??
+        localStorage.getItem(LEGACY_DICTATION_STATS_V2_STORAGE_KEY),
       localStorage.getItem(DICTATION_STATS_V1_STORAGE_KEY),
     );
     if (migrated) {
@@ -1782,7 +1784,7 @@ export default function App() {
     return (
       <main className="loading-shell">
         <div className="loading-spinner" />
-        <span className="loading-text">Loading GladiaFlow</span>
+        <span className="loading-text">Loading SpeakDrop</span>
       </main>
     );
   }

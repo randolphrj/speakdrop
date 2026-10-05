@@ -1,8 +1,8 @@
 [package]
-name = "gladiaflow"
+name = "speakdrop"
 version = "0.1.0"
-description = "A Tauri App for real-time voice dictation with Gladia"
-authors = ["Gladia <support@gladia.io>"]
+description = "SpeakDrop: real-time voice dictation powered by the Gladia API"
+authors = ["randolphrj"]
 edition = "2021"
 
 [build-dependencies]

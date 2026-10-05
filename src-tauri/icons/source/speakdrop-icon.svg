@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- SpeakDrop app icon source. Regenerate all sizes with:
+       npx tauri icon src-tauri/icons/source/speakdrop-icon.svg -->
+  <rect width="1024" height="1024" rx="224" fill="#1c1c1e"/>
+  <path d="M512 150 C512 150 262 446 262 624 A250 250 0 0 0 762 624 C762 446 512 150 512 150 Z" fill="#947afc"/>
+  <!-- Sound bars: centers 400/456/512/568/624, vertically centered at y=640 -->
+  <g fill="#ffffff">
+    <rect x="380" y="596" width="40" height="88" rx="20"/>
+    <rect x="436" y="552" width="40" height="176" rx="20"/>
+    <rect x="492" y="508" width="40" height="264" rx="20"/>
+    <rect x="548" y="552" width="40" height="176" rx="20"/>
+    <rect x="604" y="596" width="40" height="88" rx="20"/>
+  </g>
+</svg>

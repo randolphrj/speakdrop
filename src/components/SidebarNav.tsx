@@ -1,4 +1,4 @@
-import { GladiaFlowLogo } from "./GladiaFlowLogo";
+import { SpeakDropLogo } from "./SpeakDropLogo";
 import { GladiaIcon } from "./GladiaIcon";
 
 export type NavScreen =
@@ -30,7 +30,7 @@ export function SidebarNav({
   return (
     <aside className="sidebar">
       <div className="logo">
-        <GladiaFlowLogo />
+        <SpeakDropLogo />
       </div>
       <nav className="nav">
         {NAV_ITEMS.map((item) => (

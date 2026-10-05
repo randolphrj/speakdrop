@@ -16,7 +16,7 @@ import {
 } from "../lib/pillPosition";
 
 const POSITION_KEY = "gladiaflow.pill.position";
-const HIDE_AFTER_PASTE_MS = 1200;
+const HIDE_AFTER_PASTE_MS = 300;
 // Safety net: audio-level arrives ~30x/s while capturing, so a long silence
 // in events means the session ended without a paste-complete.
 const IDLE_HIDE_MS = 10000;

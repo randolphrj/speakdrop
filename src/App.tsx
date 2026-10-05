@@ -35,7 +35,11 @@ import {
   type DictationStats,
   DEFAULT_DICTATION_STATS,
   DICTATION_STATS_STORAGE_KEY,
+  DICTATION_STATS_V1_STORAGE_KEY,
   getDictationComment,
+  parseStoredDictationStats,
+  recordDictation,
+  summarizeDictationStats,
 } from "./lib/dictationStats";
 import { pickFunnyHomeMessage } from "./lib/messages";
 import { DEFAULT_CUSTOM_VOCABULARY } from "./lib/customVocabulary";
@@ -123,6 +127,23 @@ function resolveScreen(
   return navScreen;
 }
 
+/** Read v2 stats, migrating v1 totals on first load. v1 is left in place. */
+function loadDictationStats(): DictationStats {
+  try {
+    const { stats, migrated } = parseStoredDictationStats(
+      localStorage.getItem(DICTATION_STATS_STORAGE_KEY),
+      localStorage.getItem(DICTATION_STATS_V1_STORAGE_KEY),
+    );
+    if (migrated) {
+      logInfo("[stats] migrated v1 dictation totals to v2").catch(() => {});
+    }
+    return stats;
+  } catch (error) {
+    console.warn("Failed to load dictation stats:", error);
+    return DEFAULT_DICTATION_STATS;
+  }
+}
+
 export default function App() {
   const [bootstrap, setBootstrap] = useState<BootstrapState | null>(null);
   const [status, setStatus] = useState<AppStatus>({
@@ -164,9 +185,10 @@ export default function App() {
   const [languageDropdownOpen, setLanguageDropdownOpen] = useState(false);
   const [activationDropdownOpen, setActivationDropdownOpen] = useState(false);
   const [audioDeviceDropdownOpen, setAudioDeviceDropdownOpen] = useState(false);
-  const [dictationStats, setDictationStats] = useState<DictationStats>(
-    DEFAULT_DICTATION_STATS,
-  );
+  // Loaded synchronously so the persist effect below can never write
+  // defaults over stored stats before they are read.
+  const [dictationStats, setDictationStats] =
+    useState<DictationStats>(loadDictationStats);
   const [funnyHomeMessage, setFunnyHomeMessage] = useState<string>(() =>
     pickFunnyHomeMessage(),
   );
@@ -384,23 +406,6 @@ export default function App() {
   const handleHistoryQueryChange = useCallback((query: string) => {
     setHistoryQuery(query);
     setHistoryPage(1);
-  }, []);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(DICTATION_STATS_STORAGE_KEY);
-      if (!stored) return;
-      const parsed = JSON.parse(stored) as Partial<DictationStats>;
-      const totalWords = Number.isFinite(parsed.totalWords)
-        ? Math.max(0, Number(parsed.totalWords))
-        : 0;
-      const totalSeconds = Number.isFinite(parsed.totalSeconds)
-        ? Math.max(0, Number(parsed.totalSeconds))
-        : 0;
-      setDictationStats({ totalWords, totalSeconds });
-    } catch (error) {
-      console.warn("Failed to load dictation stats:", error);
-    }
   }, []);
 
   useEffect(() => {
@@ -755,10 +760,14 @@ export default function App() {
               ).catch(() => {});
             }
             const dictatedWords = countWords(bestTranscript);
-            setDictationStats((prev) => ({
-              totalWords: prev.totalWords + dictatedWords,
-              totalSeconds: prev.totalSeconds + elapsedSeconds,
-            }));
+            setDictationStats((prev) =>
+              recordDictation(prev, {
+                words: dictatedWords,
+                seconds: elapsedSeconds,
+                speakingSeconds: warningDurationSeconds,
+                at: new Date(),
+              }),
+            );
             dictationStartTimeRef.current = null;
           }
           if (sessionInitialized.current) {
@@ -1741,6 +1750,7 @@ export default function App() {
   const funnyDictationComment = getDictationComment(
     dictationStats.totalSeconds,
   );
+  const dictationSummary = summarizeDictationStats(dictationStats, new Date());
   const hasPreviousDictation =
     dictationStats.totalWords > 0 || dictationStats.totalSeconds > 0;
   const hotkeyLabel = formatHotkeyLabel(settings.hotkey);
@@ -1912,7 +1922,7 @@ export default function App() {
               isProcessing={isProcessing}
               homeTitle={homeTitle}
               homeSubtitle={homeSubtitle}
-              dictationStats={dictationStats}
+              dictationSummary={dictationSummary}
               formattedTotalTime={formattedTotalTime}
               funnyDictationComment={funnyDictationComment}
               apiKeyDisplayValue={apiKeyDisplayValue}

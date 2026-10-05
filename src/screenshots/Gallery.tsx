@@ -8,9 +8,38 @@ import { CustomVocabularyView } from "../components/CustomVocabularyView";
 import { TranscriptionSettingsView } from "../components/TranscriptionSettingsView";
 import { AppSettingsView } from "../components/AppSettingsView";
 import { DEFAULT_CUSTOM_VOCABULARY } from "../lib/customVocabulary";
-import { DEFAULT_DICTATION_STATS } from "../lib/dictationStats";
+import {
+  DEFAULT_DICTATION_STATS,
+  addDays,
+  summarizeDictationStats,
+  toLocalDateKey,
+} from "../lib/dictationStats";
 import { EUROPEAN_LANGUAGES } from "../lib/languages";
 import type { AppSettings, TranscriptionHistoryPage } from "../types";
+
+const todayKey = toLocalDateKey(new Date());
+const SAMPLE_DICTATION_SUMMARY = summarizeDictationStats(
+  {
+    ...DEFAULT_DICTATION_STATS,
+    totalWords: 1247,
+    totalSeconds: 42 * 60,
+    totalDictations: 38,
+    speedWords: 1180,
+    speedSeconds: 520,
+    lastWordsPerMinute: 142,
+    days: Object.fromEntries(
+      [180, 0, 95, 240, 310, 120, 260].map((words, i) => [
+        addDays(todayKey, i - 6),
+        { words, seconds: words / 2, count: words > 0 ? 3 : 0 },
+      ]),
+    ),
+  },
+  new Date(),
+);
+const EMPTY_DICTATION_SUMMARY = summarizeDictationStats(
+  DEFAULT_DICTATION_STATS,
+  new Date(),
+);
 
 const noop = () => {};
 const MOCK_SETTINGS: AppSettings = {
@@ -163,7 +192,7 @@ export function ScreenshotGallery() {
             isProcessing={false}
             homeTitle="Ready to dictate"
             homeSubtitle="Hold Fn, speak, release."
-            dictationStats={{ totalWords: 1247, totalSeconds: 42 * 60 }}
+            dictationSummary={SAMPLE_DICTATION_SUMMARY}
             formattedTotalTime="42 min"
             funnyDictationComment="You've saved roughly 3 coffee breaks worth of typing."
             apiKeyDisplayValue="****************"
@@ -191,7 +220,7 @@ export function ScreenshotGallery() {
             isProcessing={false}
             homeTitle="Listening..."
             homeSubtitle={null}
-            dictationStats={DEFAULT_DICTATION_STATS}
+            dictationSummary={EMPTY_DICTATION_SUMMARY}
             formattedTotalTime="0 min"
             funnyDictationComment=""
             apiKeyDisplayValue=""
@@ -219,7 +248,7 @@ export function ScreenshotGallery() {
             isProcessing={false}
             homeTitle="Ready to dictate"
             homeSubtitle="Hold Fn, speak, release."
-            dictationStats={{ totalWords: 1247, totalSeconds: 42 * 60 }}
+            dictationSummary={SAMPLE_DICTATION_SUMMARY}
             formattedTotalTime="42 min"
             funnyDictationComment="You've saved roughly 3 coffee breaks worth of typing."
             apiKeyDisplayValue="sk-example"

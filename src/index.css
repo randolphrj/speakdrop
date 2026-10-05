@@ -303,7 +303,7 @@ textarea {
 
 .dictation-stats-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-2);
 }
 
@@ -323,10 +323,61 @@ textarea {
   letter-spacing: var(--letter-spacing-wider);
   text-transform: uppercase;
   color: var(--text-tertiary);
+  /* Room for two lines so values align across the four columns. */
+  line-height: 1.2;
+  min-height: 2.4em;
 }
 
 .dictation-stat-value {
   font-size: var(--font-size-14);
+  color: var(--text-primary);
+}
+
+.dictation-stat-detail {
+  font-size: var(--font-size-10);
+  color: var(--text-tertiary);
+}
+
+.dictation-stats-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.dictation-stats-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.dictation-stats-day-track {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  height: 40px;
+  border-radius: var(--radius-1);
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+.dictation-stats-day-bar {
+  width: 100%;
+  background: color-mix(in srgb, var(--text-brand) 55%, transparent);
+  transition: height var(--duration-160) var(--ease-out);
+}
+
+.dictation-stats-day.today .dictation-stats-day-bar {
+  background: var(--text-brand);
+}
+
+.dictation-stats-day-label {
+  font-size: var(--font-size-10);
+  color: var(--text-tertiary);
+}
+
+.dictation-stats-day.today .dictation-stats-day-label {
   color: var(--text-primary);
 }
 

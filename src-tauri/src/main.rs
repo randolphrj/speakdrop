@@ -159,6 +159,43 @@ impl AudioLevelThrottle {
     }
 }
 
+/// Watches the start of a capture for pure digital silence (every sample
+/// exactly zero). A live microphone always has some noise, so this means the
+/// stream is dead even though callbacks keep arriving.
+struct DigitalSilenceWatch {
+    needed_bytes: usize,
+    seen_bytes: usize,
+    done: bool,
+}
+
+impl DigitalSilenceWatch {
+    /// Judge after 1.5 s of 16-bit mono audio at `sample_rate`.
+    fn new(sample_rate: u32) -> Self {
+        Self {
+            needed_bytes: sample_rate as usize * 2 * 3 / 2,
+            seen_bytes: 0,
+            done: false,
+        }
+    }
+
+    /// Returns true exactly once, when the first 1.5 s were all zeros.
+    fn observe(&mut self, data: &[u8]) -> bool {
+        if self.done {
+            return false;
+        }
+        if data.iter().any(|byte| *byte != 0) {
+            self.done = true;
+            return false;
+        }
+        self.seen_bytes += data.len();
+        if self.seen_bytes >= self.needed_bytes {
+            self.done = true;
+            return true;
+        }
+        false
+    }
+}
+
 fn tray_icon_from_bytes(bytes: &[u8]) -> Result<tauri::image::Image<'static>, String> {
     tauri::image::Image::from_bytes(bytes).map_err(|e| e.to_string())
 }
@@ -696,11 +733,13 @@ async fn start_audio_capture(
     let (tx, mut async_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
     let ready_app = app_handle.clone();
+    let silence_audio = state.audio.clone();
     let ready_capture_id = capture_id.unwrap_or_default();
     let capture_started = Instant::now();
     tokio::task::spawn_blocking(move || {
         let mut readiness = FirstAudioChunkGate::default();
         let mut level_throttle = AudioLevelThrottle::default();
+        let mut silence_watch = DigitalSilenceWatch::new(sample_rate);
         while let Ok(chunk) = rx.recv() {
             if readiness.observe() {
                 let _ = ready_app.emit(
@@ -716,6 +755,14 @@ async fn start_audio_capture(
             let level = dbfs_to_level(pcm16_rms_dbfs(&chunk.data));
             if let Some(level) = level_throttle.observe(level, Instant::now()) {
                 let _ = ready_app.emit("audio-level", level);
+            }
+            if silence_watch.observe(&chunk.data) {
+                log::warn!("audio: microphone delivered only digital silence; reopening it next time");
+                silence_audio.request_reopen();
+                let _ = ready_app.emit(
+                    "transcription-error",
+                    "No sound is reaching SpeakDrop from your microphone. It has been reset — please try again.",
+                );
             }
             if tx.send(chunk.data).is_err() {
                 break;
@@ -762,6 +809,34 @@ mod readiness_tests {
         assert!(gate.observe());
         assert!(!gate.observe());
         assert!(!gate.observe());
+    }
+}
+
+#[cfg(test)]
+mod silence_watch_tests {
+    use super::DigitalSilenceWatch;
+
+    #[test]
+    fn flags_a_dead_stream_once_after_one_and_a_half_seconds() {
+        // 16 kHz mono 16-bit: 1.5 s = 48_000 bytes; feed 100 ms chunks.
+        let mut watch = DigitalSilenceWatch::new(16_000);
+        let silent = vec![0u8; 3_200];
+        let verdicts: Vec<bool> = (0..20).map(|_| watch.observe(&silent)).collect();
+        assert_eq!(verdicts.iter().filter(|v| **v).count(), 1);
+        assert!(verdicts[14]);
+        assert!(!verdicts[13]);
+    }
+
+    #[test]
+    fn real_audio_never_triggers_even_if_mostly_quiet() {
+        let mut watch = DigitalSilenceWatch::new(16_000);
+        let mut quiet = vec![0u8; 3_200];
+        quiet[100] = 1; // a single non-zero sample: a live but quiet mic
+        assert!(!watch.observe(&vec![0u8; 3_200]));
+        assert!(!watch.observe(&quiet));
+        for _ in 0..30 {
+            assert!(!watch.observe(&vec![0u8; 3_200]));
+        }
     }
 }
 

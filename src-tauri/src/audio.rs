@@ -48,6 +48,9 @@ pub struct AudioCapture {
     commands: Sender<CaptureCommand>,
     command_lock: Mutex<()>,
     next_generation: AtomicU64,
+    /// Set when a session received pure digital silence; the next start
+    /// reopens the microphone instead of reusing the pre-warmed stream.
+    reopen_requested: Arc<AtomicBool>,
 }
 
 struct SessionRoute {
@@ -71,6 +74,8 @@ struct PreparedCapture {
     route: Arc<ArcSwapOption<SessionRoute>>,
     invalidated: Arc<AtomicBool>,
     active: bool,
+    /// When the stream was last opened or paused.
+    idle_since: Instant,
 }
 
 enum CaptureCommand {
@@ -86,6 +91,10 @@ enum CaptureCommand {
 pub const GLADIA_SAMPLE_RATES: [u32; 5] = [8_000, 16_000, 32_000, 44_100, 48_000];
 const FALLBACK_SAMPLE_RATE: u32 = 16_000;
 const DEFAULT_DEVICE_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
+// A paused pre-warmed stream can stop delivering real audio after sitting idle
+// for a long time (observed on Windows after ~2 h: callbacks kept arriving but
+// Gladia heard nothing). Reopen it at the next start once it has idled this long.
+const STALE_PREPARED_CAPTURE_AFTER: Duration = Duration::from_secs(5 * 60);
 const OBSERVED_RATE_TOLERANCE: f64 = 0.08;
 const OBSERVED_RATE_CONFIRMATIONS: u8 = 2;
 const COMMON_INPUT_SAMPLE_RATES: [u32; 12] = [
@@ -562,7 +571,37 @@ where
     }
 }
 
-fn capture_worker(commands: Receiver<CaptureCommand>, sample_rate: Arc<AtomicU32>) {
+fn prepared_capture_is_stale(idle: Duration) -> bool {
+    idle >= STALE_PREPARED_CAPTURE_AFTER
+}
+
+/// Drop an idle pre-warmed stream that is stale or was flagged as silent, so
+/// the following `ensure_prepared` opens the microphone fresh.
+fn drop_stale_prepared(prepared: &mut Option<PreparedCapture>, reopen_requested: &AtomicBool) {
+    let Some(capture) = prepared.as_ref() else {
+        reopen_requested.store(false, Ordering::Release);
+        return;
+    };
+    if capture.active || capture.route.load().is_some() {
+        return;
+    }
+    let reopen = reopen_requested.swap(false, Ordering::AcqRel);
+    let idle = capture.idle_since.elapsed();
+    if reopen || prepared_capture_is_stale(idle) {
+        log::info!(
+            "audio: reopening microphone ({}; idle {}s)",
+            if reopen { "silence detected last session" } else { "stream idle too long" },
+            idle.as_secs()
+        );
+        *prepared = None;
+    }
+}
+
+fn capture_worker(
+    commands: Receiver<CaptureCommand>,
+    sample_rate: Arc<AtomicU32>,
+    reopen_requested: Arc<AtomicBool>,
+) {
     let mut prepared: Option<PreparedCapture> = None;
     loop {
         let command = match commands.recv_timeout(DEFAULT_DEVICE_REFRESH_INTERVAL) {
@@ -580,6 +619,7 @@ fn capture_worker(commands: Receiver<CaptureCommand>, sample_rate: Arc<AtomicU32
             }
             CaptureCommand::Start(device_name, route, reply) => {
                 let started = Instant::now();
+                drop_stale_prepared(&mut prepared, &reopen_requested);
                 let result =
                     ensure_prepared(&mut prepared, device_name, &sample_rate).and_then(|rate| {
                         let capture = prepared.as_mut().expect("prepared capture missing");
@@ -618,6 +658,7 @@ fn capture_worker(commands: Receiver<CaptureCommand>, sample_rate: Arc<AtomicU32
                         Ok(())
                     };
                     capture.active = false;
+                    capture.idle_since = Instant::now();
                     // Removing the sole persistent route closes the session channel
                     // as soon as any in-flight callback returns.
                     capture.route.store(None);
@@ -869,6 +910,7 @@ fn build_prepared_capture(selection: AudioDeviceSelection) -> Result<PreparedCap
         route,
         invalidated,
         active: false,
+        idle_since: Instant::now(),
     })
 }
 
@@ -877,15 +919,18 @@ impl AudioCapture {
         let (commands, command_rx) = unbounded();
         let sample_rate = Arc::new(AtomicU32::new(FALLBACK_SAMPLE_RATE));
         let worker_rate = sample_rate.clone();
+        let reopen_requested = Arc::new(AtomicBool::new(false));
+        let worker_reopen = reopen_requested.clone();
         thread::Builder::new()
             .name("audio-capture".into())
-            .spawn(move || capture_worker(command_rx, worker_rate))
+            .spawn(move || capture_worker(command_rx, worker_rate, worker_reopen))
             .expect("failed to create audio capture worker");
         Self {
             sample_rate,
             commands,
             command_lock: Mutex::new(()),
             next_generation: AtomicU64::new(1),
+            reopen_requested,
         }
     }
 
@@ -903,6 +948,12 @@ impl AudioCapture {
             .map_err(|e| e.to_string())?
             .find(|c| c.max_sample_rate() >= 8_000)
             .ok_or("No suitable input config found".to_string())
+    }
+
+    /// Ask for a fresh microphone stream at the next start (e.g. after the
+    /// current one delivered nothing but digital silence).
+    pub fn request_reopen(&self) {
+        self.reopen_requested.store(true, Ordering::Release);
     }
 
     pub fn get_sample_rate(&self) -> u32 {
@@ -973,6 +1024,14 @@ impl Default for AudioCapture {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prepared_stream_goes_stale_after_five_minutes_idle() {
+        assert!(!prepared_capture_is_stale(Duration::from_secs(0)));
+        assert!(!prepared_capture_is_stale(Duration::from_secs(299)));
+        assert!(prepared_capture_is_stale(Duration::from_secs(300)));
+        assert!(prepared_capture_is_stale(Duration::from_secs(2 * 60 * 60)));
+    }
 
     fn stream_instant_nanos(nanos: u64) -> cpal::StreamInstant {
         cpal::StreamInstant::new(

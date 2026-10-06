@@ -1582,7 +1582,9 @@ export default function App() {
         await handleStartDictation();
       }
     } else {
-      if (isRecordingRef.current) {
+      if (isInitializingRef.current) {
+        requestEarlyStop("hotkey pressed again");
+      } else if (isRecordingRef.current) {
         await handleStopDictation();
       } else {
         await handleStartDictation();
@@ -1603,48 +1605,58 @@ export default function App() {
     if (justCapturedRef.current) return;
     if (!apiKeyRef.current.trim()) return;
     if (settingsRef.current.activationMode === "push-to-talk") {
-      if (dictationStartTimeRef.current !== null) {
-        completedDictationDurationRef.current = Math.max(
-          0,
-          (Date.now() - dictationStartTimeRef.current) / 1000,
-        );
-      }
       if (isInitializingRef.current) {
-        pendingStopRef.current = true;
-        const keyUpAt = performance.now();
-        earlyReleaseAtRef.current = keyUpAt;
-        const wasAudioReady = audioReadyRef.current;
-        clearAudioReadyTimer();
-        audioReadyRef.current = false;
-        stopRequestedRef.current = true;
-        clearStopFallbackTimer();
-        setRecordingState(false);
-        setProcessingState(true);
-        setStatus({
-          phase: "finalizing",
-          title: "Finalizing...",
-          detail: "Pasting your transcription",
-        });
-        if (wasAudioReady) {
-          audioCue.playStopSound();
-        }
-        logInfo(
-          "[dictation-stop] hotkey released during session initialization; stopping audio immediately",
-        ).catch(() => {});
-        earlyAudioStopPromiseRef.current = invoke("stop_audio_capture")
-          .then(() => {
-            logInfo(
-              `audio latency: key-up-to-capture-paused=${(
-                performance.now() - keyUpAt
-              ).toFixed(1)}ms`,
-            ).catch(() => {});
-            return null;
-          })
-          .catch((error) => String(error));
+        requestEarlyStop("hotkey released");
       } else if (isRecordingRef.current) {
         await handleStopDictation();
       }
     }
+  };
+
+  /**
+   * Stop requested while the session is still being set up (Hold: key
+   * released; Toggle: pressed again). Pause audio now and let
+   * handleStartDictation finish the teardown once setup returns — calling
+   * handleStopDictation here would leave the app stuck in "finalizing".
+   */
+  const requestEarlyStop = (reason: string) => {
+    if (dictationStartTimeRef.current !== null) {
+      completedDictationDurationRef.current = Math.max(
+        0,
+        (Date.now() - dictationStartTimeRef.current) / 1000,
+      );
+    }
+    pendingStopRef.current = true;
+    const keyUpAt = performance.now();
+    earlyReleaseAtRef.current = keyUpAt;
+    const wasAudioReady = audioReadyRef.current;
+    clearAudioReadyTimer();
+    audioReadyRef.current = false;
+    stopRequestedRef.current = true;
+    clearStopFallbackTimer();
+    setRecordingState(false);
+    setProcessingState(true);
+    setStatus({
+      phase: "finalizing",
+      title: "Finalizing...",
+      detail: "Pasting your transcription",
+    });
+    if (wasAudioReady) {
+      audioCue.playStopSound();
+    }
+    logInfo(
+      `[dictation-stop] ${reason} during session initialization; stopping audio immediately`,
+    ).catch(() => {});
+    earlyAudioStopPromiseRef.current = invoke("stop_audio_capture")
+      .then(() => {
+        logInfo(
+          `audio latency: key-up-to-capture-paused=${(
+            performance.now() - keyUpAt
+          ).toFixed(1)}ms`,
+        ).catch(() => {});
+        return null;
+      })
+      .catch((error) => String(error));
   };
 
   flushPendingStartRef.current = () => {
